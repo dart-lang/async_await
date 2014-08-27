@@ -232,6 +232,10 @@ class Analysis extends ast.GeneralizingAstVisitor<bool> {
     return false;
   }
 
+  bool visitFunctionExpressionInvocation(ast.FunctionExpressionInvocation node) {
+   return maybeAdd(node, visit(node.argumentList));
+  }
+
   bool visitIndexExpression(ast.IndexExpression node) {
     var result = visit(node.target);
     return maybeAdd(node, visit(node.index) || result);
@@ -412,7 +416,10 @@ class AsyncTransformer extends ast.AstVisitor {
 
   ast.Block currentBlock;
   List<ast.Expression> breakTargets;
+  List<ast.Expression> breakLabels;
+
   List<ast.Expression> continueTargets;
+  List<ast.Expression> continueLabels;
 
   visit(ast.AstNode node) => node.accept(this);
 
@@ -431,7 +438,9 @@ class AsyncTransformer extends ast.AstVisitor {
     nameCounters = <String, int>{};
     currentBlock = emptyBlock();
     breakTargets = <ast.Expression>[];
+    breakLabels = <String>[];
     continueTargets = <ast.Expression>[];
+    continueLabels = <ast.Expression>[];
     awaits = analysis.awaits;
     names = analysis.names;
   }
@@ -642,9 +651,19 @@ class AsyncTransformer extends ast.AstVisitor {
   };
 
   visitBreakStatement(ast.BreakStatement node) => (f, r, s) {
-    if (node.label != null) unimplemented(node);
+    var target;
+
+    if (node.label != null) {
+      var i;
+      for(i = breakLabels.length-1; i >= 0; i--) {
+        if(breakLabels[i] == node.label.name) break;
+      }
+      target = breakTargets[i];
+    } else {
+      target = breakTargets.last;
+    }
     addStatement(AstFactory.functionExpressionInvocation(
-        breakTargets.last, [nullLiteral()]));
+        target, [nullLiteral()]));
   };
 
   visitContinueStatement(ast.ContinueStatement node) => (f, r, s) {
@@ -682,6 +701,7 @@ class AsyncTransformer extends ast.AstVisitor {
         AstFactory.functionDeclarationStatement(null, null, continueName,
             functionExpression([newName('x')], continueBlock)));
     breakTargets.add(identifier(breakName));
+    breakLabels.add(breakName);
     continueTargets.add(identifier(continueName));
     visit(node.body)(f, r, () {
       addStatement(
@@ -689,6 +709,7 @@ class AsyncTransformer extends ast.AstVisitor {
               identifier(continueName), [nullLiteral()]));
     });
     breakTargets.removeLast();
+    breakLabels.removeLast();
     continueTargets.removeLast();
 
     currentBlock = savedBlock;
@@ -827,6 +848,7 @@ class AsyncTransformer extends ast.AstVisitor {
 
     var bodyBlock = currentBlock = emptyBlock();
     breakTargets.add(identifier(breakName));
+    breakLabels.add(breakName);
     continueTargets.add(identifier(continueName));
     visit(node.body)(f, r, () {
       addStatement(
@@ -834,6 +856,7 @@ class AsyncTransformer extends ast.AstVisitor {
               identifier(continueName), [nullLiteral()]));
     });
     breakTargets.removeLast();
+    breakLabels.removeLast();
     continueTargets.removeLast();
 
     var loopBlock = currentBlock = emptyBlock();
@@ -910,7 +933,37 @@ class AsyncTransformer extends ast.AstVisitor {
     });
   };
 
-  visitLabeledStatement(ast.LabeledStatement node) => unimplemented(node);
+  visitLabeledStatement(ast.LabeledStatement node) => (f,r,s) {
+    // if loop recurse immediately
+
+    var breakName = newName('break');
+    var savedBlock = currentBlock;
+    var breakBlock = currentBlock = emptyBlock();
+    s();
+    currentBlock = savedBlock;
+
+    addStatement(
+        AstFactory.functionDeclarationStatement(
+          null,
+          null,
+          breakName,
+          functionExpression([newName('x')], breakBlock)));
+
+    for(var label in node.labels) {
+      breakLabels.add(label.label.name);
+      breakTargets.add(identifier(breakName));
+    }
+
+    visit(node.statement) (f,r, () {
+      addStatement(
+        AstFactory.functionExpressionInvocation(
+            identifier(breakName), [nullLiteral()]));
+    });
+
+    var delta = node.labels.length;
+    breakLabels.length -= delta; breakTargets.length -= delta;
+
+  };
 
   visitRethrowExpression(ast.RethrowExpression node) => unimplemented(node);
 
@@ -1158,6 +1211,7 @@ class AsyncTransformer extends ast.AstVisitor {
   };
 
   visitWhileStatement(ast.WhileStatement node) => (f, r, s) {
+
     var breakName = newName('break');
     var continueName = newName('continue');
 
@@ -1169,14 +1223,21 @@ class AsyncTransformer extends ast.AstVisitor {
     visit(node.condition)(f, (expr) {
       var savedBlock = currentBlock;
       var bodyBlock = currentBlock = emptyBlock();
+
       breakTargets.add(identifier(breakName));
+      breakLabels.add(breakName);
+
       continueTargets.add(identifier(continueName));
+
       visit(node.body)(f, r, () {
         addStatement(
             AstFactory.functionExpressionInvocation(
               identifier(continueName), [nullLiteral()]));
       });
+
       breakTargets.removeLast();
+      breakLabels.removeLast();
+
       continueTargets.removeLast();
 
       currentBlock = savedBlock;
@@ -1350,9 +1411,11 @@ class AsyncTransformer extends ast.AstVisitor {
     return s(node);
   };
 
-  visitFunctionExpressionInvocation(ast.FunctionExpressionInvocation node) {
-    unimplemented(node);
-  }
+  visitFunctionExpressionInvocation(ast.FunctionExpressionInvocation node) => (f,s) {
+    _translateExpressionList(node.argumentList.arguments)(f, (rands) {
+          s(AstFactory.functionExpressionInvocation(node.function, rands));
+    });
+  };
 
   // ---- Identifiers ----
   visitSimpleIdentifier(ast.SimpleIdentifier node) => (f, s) {
