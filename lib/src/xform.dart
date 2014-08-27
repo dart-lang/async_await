@@ -212,6 +212,10 @@ class Analysis extends ast.GeneralizingAstVisitor<bool> {
     return false;
   }
 
+  bool visitFunctionExpressionInvocation(ast.FunctionExpressionInvocation node) {
+   return maybeAdd(node, visit(node.argumentList));
+  }
+
   bool visitIndexExpression(ast.IndexExpression node) {
     var result = visit(node.target);
     return maybeAdd(node, visit(node.index) || result);
@@ -1240,9 +1244,11 @@ class AsyncTransformer extends ast.AstVisitor {
     return s(node);
   };
 
-  visitFunctionExpressionInvocation(ast.FunctionExpressionInvocation node) {
-    unimplemented(node);
-  }
+  visitFunctionExpressionInvocation(ast.FunctionExpressionInvocation node) => (f,s) {
+    _translateExpressionList(node.argumentList.arguments)(f, (rands) {
+          s(AstFactory.functionExpressionInvocation(node.function, rands));
+    });
+  };
 
   // ---- Identifiers ----
   visitSimpleIdentifier(ast.SimpleIdentifier node) => (f, s) {
