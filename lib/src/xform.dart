@@ -476,6 +476,10 @@ class AsyncTransformer extends ast.AstVisitor {
   List<JumpTarget> breakTargets;
   List<JumpTarget> continueTargets;
 
+  // Inside a catch block, `rethrow` throws the current exception.  The
+  // translation maintains a current exception when inside a catch block.
+  String currentExceptionName;
+
   visit(ast.AstNode node) => node.accept(this);
 
   Map<String, int> nameCounters;
@@ -494,6 +498,7 @@ class AsyncTransformer extends ast.AstVisitor {
     currentBlock = make.emptyBlock();
     breakTargets = <JumpTarget>[];
     continueTargets = <JumpTarget>[];
+    currentExceptionName = null;
     awaits = analysis.awaits;
     labels = analysis.labels;
     names = analysis.names;
@@ -1067,8 +1072,6 @@ class AsyncTransformer extends ast.AstVisitor {
     };
   }
 
-  visitRethrowExpression(ast.RethrowExpression node) => unimplemented(node);
-
   visitReturnStatement(ast.ReturnStatement node) => (rk, ek, sk) {
     return (node.expression == null)
         ? rk(make.nullLiteral())
@@ -1161,10 +1164,11 @@ class AsyncTransformer extends ast.AstVisitor {
   };
 
   _translateCatchClauses(List<ast.CatchClause> clauses, rk, ek, sk) {
+    var savedExceptionName = currentExceptionName;
     var catchName = newName('catch');
     var exceptionName, stackTraceName, catchBlock;
     if (clauses.isEmpty) {
-      exceptionName = newName('e');
+      exceptionName = currentExceptionName = newName('e');
       stackTraceName = newName('s');
       catchBlock = make.block([ek.apply(exceptionName, stackTraceName)]);
     } else {
@@ -1173,12 +1177,12 @@ class AsyncTransformer extends ast.AstVisitor {
       // names.  Otherwise, choose fresh names to avoid shadowing anything.
       if (clauses.length == 1) {
         var only = clauses.first;
-        exceptionName = only.exceptionParameter.name;
+        exceptionName = currentExceptionName = only.exceptionParameter.name;
         stackTraceName = only.stackTraceParameter == null
             ? newName('s')
             : only.stackTraceParameter.name;
       } else {
-        exceptionName = newName('e');
+        exceptionName = currentExceptionName = newName('e');
         stackTraceName = newName('s');
       }
       // Build a chain of if/else statements nested in the else blocks.
@@ -1222,6 +1226,7 @@ class AsyncTransformer extends ast.AstVisitor {
           [make.catchClause(null, exceptionName, stackTraceName,
                make.block([ek.apply(exceptionName, stackTraceName)]))]);
     }
+    currentExceptionName = savedExceptionName;
     addStatement(make.functionDeclarationStatement(catchName,
         [exceptionName, stackTraceName], catchBlock));
     return catchName;
@@ -1915,6 +1920,13 @@ class AsyncTransformer extends ast.AstVisitor {
     return visit(node.target)(ek, (expr) {
       return sk(make.propertyAccess(expr, node.propertyName));
     });
+  };
+
+  // `rethrow` is not an expression but a statement in Dart.  The analyzer
+  // however parses it as an expression inside an expression statement.
+  visitRethrowExpression(ast.RethrowExpression node) => (ek, sk) {
+    assert(currentExceptionName != null);
+    return sk(make.throwExpression(make.identifier(currentExceptionName)));
   };
 
   visitSuperExpression(ast.SuperExpression node) => (ek, sk) {
