@@ -1595,7 +1595,8 @@ class AsyncTransformer extends ast.AstVisitor {
 
   visitAwaitExpression(ast.AwaitExpression node) => (ek, sk) {
     return visit(node.expression)(ek, (expr) {
-      addStatement(make.methodInvocation(expr, 'then',
+      var wrapped = make.newInstance(make.identifier('Future', 'value'), [expr]);
+      addStatement(make.methodInvocation(wrapped, 'then',
           [_reifyAwaitContinuation(sk, ek),
            make.namedExpression('onError', ek.reify())]));
     });
