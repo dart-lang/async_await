@@ -6,15 +6,24 @@
 
 import 'dart:io';
 
+import 'package:args/args.dart';
+
 import 'package:async_await/src/compiler.dart';
 
 main(List<String> args) {
-  if (args.length != 1) {
+  var argParser = new ArgParser(allowTrailingOptions: true);
+  argParser.addOption('package-root', help: 'The path to the package root',
+      defaultsTo: Platform.packageRoot);
+  var result = argParser.parse(args);
+  if (result.rest.length != 1) {
     print('Usage: async_await.dart [file]');
+    print('  Options: --package-root=[path]  The path to the package root');
     exit(0);
   }
-  var source = new File(args.first).readAsStringSync();
-  var output = compile(source, (errorCollector) {
+  var file = new File(result.rest.first);
+  var source = file.readAsStringSync();
+  var output = Compiler.compile(source, file.absolute.path,
+      result['package-root'], (errorCollector) {
     print("Errors:");
     errorCollector.errors.forEach(print);
     exit(1);

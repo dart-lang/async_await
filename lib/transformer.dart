@@ -3,6 +3,7 @@
 // BSD-style license that can be found in the LICENSE file.
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:barback/barback.dart';
 
@@ -22,7 +23,8 @@ class AsyncAwaitTransformer extends Transformer implements LazyTransformer {
 
   Future apply(Transform transform) {
     return transform.primaryInput.readAsString().then((source) {
-      source = compile(source);
+      source =
+          compile(source, transform.primaryInput.id.path, Platform.packageRoot);
       transform.addOutput(
           new Asset.fromString(transform.primaryInput.id, source));
     });
