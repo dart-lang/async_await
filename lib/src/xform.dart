@@ -1310,7 +1310,7 @@ class AsyncTransformer extends ast.AstVisitor {
       // names.  Otherwise, choose fresh names to avoid shadowing anything.
       if (clauses.length == 1) {
         var only = clauses.first;
-        exceptionName = currentExceptionName = 
+        exceptionName = currentExceptionName =
             only.exceptionParameter == null
                 ? newName('e')
                 : only.exceptionParameter.name;
@@ -1733,7 +1733,9 @@ class AsyncTransformer extends ast.AstVisitor {
   }
 
   visitAwaitExpression(ast.AwaitExpression node) => (ek, sk) {
-    return visit(node.expression)(ek, (expr) {
+    var savedBlock = currentBlock;
+    var tryBlock = currentBlock = make.emptyBlock();
+    visit(node.expression)(ek, (expr) {
       if (currentStream != null) {
         expr = addTempDeclaration(expr);
         addStatement(make.methodInvocation(
@@ -1745,6 +1747,18 @@ class AsyncTransformer extends ast.AstVisitor {
           [_reifyAwaitContinuation(sk, ek),
            make.namedExpression('onError', ek.reify())]));
     });
+
+    currentBlock = savedBlock;
+    var exceptionName = newName('e');
+    var stackTraceName = newName('s');
+    addStatement(make.tryStatement(tryBlock,
+        [make.catchClause(null, exceptionName, stackTraceName,
+             make.block([make.methodInvocation(
+                 make.newInstance(make.identifier('Future',  'error'),
+                     [make.identifier(exceptionName),
+                      make.identifier(stackTraceName)]),
+                 'catchError',
+                 [ek.reify()])]))]));
   };
 
   visitBinaryExpression(ast.BinaryExpression node) => (ek, sk) {
