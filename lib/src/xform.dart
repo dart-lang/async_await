@@ -851,7 +851,7 @@ class AsyncTransformer extends ast.AstVisitor {
       assert(node.loopVariable != null);
       body = make.block(
           [make.variableDeclarationStatement(
-              scanner.Keyword.keywords[node.loopVariable.keyword.lexeme],
+              make.keyword(node.loopVariable.keyword),
               [make.variableDeclaration(
                    node.loopVariable.identifier.name,
                    make.propertyAccess(make.identifier(it), 'current'))],
@@ -933,7 +933,7 @@ class AsyncTransformer extends ast.AstVisitor {
         } else {
           assert(node.loopVariable != null);
           addStatement(make.variableDeclarationStatement(
-              scanner.Keyword.keywords[node.loopVariable.keyword.lexeme],
+              make.keyword(node.loopVariable.keyword),
               [make.variableDeclaration(
                    node.loopVariable.identifier.name,
                    make.identifier(parameter))],
@@ -1519,10 +1519,7 @@ class AsyncTransformer extends ast.AstVisitor {
 
   visitVariableDeclarationStatement(
       ast.VariableDeclarationStatement node) => (rk, ek, sk) {
-    var keyword;
-    if (node.variables.keyword != null) {
-      keyword = scanner.Keyword.keywords[node.variables.keyword.lexeme];
-    }
+    var keyword = make.keyword(node.variables.keyword);
     var type = node.variables.type;
     return _translateDeclarationList(keyword, type, node.variables, ek,
         (decls) {

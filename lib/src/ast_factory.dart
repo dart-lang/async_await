@@ -9,6 +9,10 @@ import 'package:analyzer/src/generated/scanner.dart' as scanner;
 import 'package:analyzer/src/generated/testing/ast_factory.dart';
 
 // AST construction functions.
+scanner.Keyword keyword(scanner.Token token) {
+  if (token == null) return null;
+  return scanner.Keyword.keywords[token.lexeme];
+}
 
 // Create a function body from an expression, a single statement, or a block.
 ast.FunctionBody functionBody(ast.AstNode body) {
